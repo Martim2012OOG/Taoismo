@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tela cheia — Embeder</title>
+  <style>
+    /* Reset básico */
+    html,body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+
+    /* iframe ocupa todo o ecrã */
+    #site-frame {
+      position: fixed;
+      inset: 0; /* top:0; right:0; bottom:0; left:0; */
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      background: #fff;
+      z-index: 1;
+    }
+
+    /* Controlo sobreposto (fullscreen, abrir nova aba, mensagem de erro) */
+    .controls {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 9999;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: rgba(0,0,0,0.6);
+      color: white;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    /* Banner de erro / informação */
+    #notice {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 16px;
+      z-index: 9999;
+      background: rgba(255,255,255,0.95);
+      color: #111;
+      padding: 10px 14px;
+      border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      display: none;
+      max-width: calc(100% - 32px);
+      text-align: center;
+    }
+
+    /* Small hint for mobile */
+    #hint {
+      position: fixed;
+      left: 8px;
+      bottom: 8px;
+      z-index: 9998;
+      color: rgba(255,255,255,0.85);
+      font-size: 12px;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    }
+  </style>
+</head>
+<body>
+  <div id="notice" role="status" aria-live="polite"></div>
+
+  <!-- Iframe com atributos úteis; ajustar src conforme necessário -->
+  <iframe
+    id="site-frame"
+    src="https://preview--tao-kids-explore.lovable.app/"
+    allow="fullscreen; accelerometer; autoplay; camera; microphone; geolocation; clipboard-write; display-capture"
+    allowfullscreen
+    title="Embedded site">
+  </iframe>
+
+  <div class="controls" aria-hidden="false">
+    <button id="fsBtn" class="btn" title="Entrar em tela cheia (funciona após clique)">
+      ⛶ Tela cheia
+    </button>
+    <button id="openBtn" class="btn" title="Abrir em nova aba">
+      🔗 Abrir em nova aba
+    </button>
+    <button id="reloadBtn" class="btn" title="Recarregar iframe">
+      ⟲ Recarregar
+    </button>
+  </div>
+
+  <div id="hint">Se o site não aparecer, pode estar a bloquear embedding. Use "Abrir em nova aba".</div>
+
+  <script>
+    (function () {
+      const iframe = document.getElementById('site-frame');
+      const notice = document.getElementById('notice');
+      const fsBtn = document.getElementById('fsBtn');
+      const openBtn = document.getElementById('openBtn');
+      const reloadBtn = document.getElementById('reloadBtn');
+
+      let loaded = false;
+      const timeoutMs = 4000; // tempo para decidir que pode haver bloqueio
+
+      // Mostra mensagem limpa
+      function showNotice(msg, ms) {
+        notice.textContent = msg;
+        notice.style.display = 'block';
+        if (ms) {
+          setTimeout(() => notice.style.display = 'none', ms);
+        }
+      }
+
+      // Fallback: abrir em nova aba
+      openBtn.addEventListener('click', function () {
+        window.open(iframe.src, '_blank', 'noopener,noreferrer');
+      });
+
+      // Recarregar iframe
+      reloadBtn.addEventListener('click', function () {
+        // força reload adicionando query param
+        const url = new URL(iframe.src, window.location.href);
+        url.searchParams.set('_ts', Date.now());
+        iframe.src = url.toString();
+        showNotice('A carregar...', 2000);
+      });
+
+      // Fullscreen attempt: preferir colocar o iframe full screen
+      fsBtn.addEventListener('click', async function () {
+        // Some browsers require a user gesture on the element, so try iframe then document
+        try {
+          if (iframe.requestFullscreen) {
+            await iframe.requestFullscreen();
+          } else if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+          } else {
+            showNotice('Fullscreen não suportado neste navegador.', 3000);
+          }
+        } catch (err) {
+          // fallback
+          showNotice('Não foi possível activar o modo tela cheia: ' + (err && err.message ? err.message : ''), 4000);
+        }
+      });
+
+      // Detecta carregamento do iframe
+      iframe.addEventListener('load', function () {
+        loaded = true;
+        // Em muitos casos cross-origin impede inspeção, mas o evento load significa que o recurso respondeu
+        showNotice('Carregado com sucesso.', 1500);
+      });
+
+      // Se o iframe não carregar (por exemplo, blocked by X-Frame-Options),
+      // depois de um timeout mostramos instruções/fallback.
+      setTimeout(function () {
+        if (!loaded) {
+          // Tentar detetar bloqueio: alguns browsers disparam erro, mas se não for possível,
+          // damos fallback visual.
+          showNotice('O conteúdo pode estar a bloquear embed (X-Frame-Options / CSP). Use "Abrir em nova aba".', 8000);
+        }
+      }, timeoutMs);
+
+      // Melhorar UX: se user estiver em iOS Safari, mostrar breve dica sobre gestures
+      const isiOS = /iP(ad|hone|od)/.test(navigator.userAgent);
+      if (isiOS) {
+        document.getElementById('hint').textContent = 'iOS: toque no botão "Tela cheia" e depois no ícone de ecrã total do Safari (se disponível).';
+      }
+    })();
+  </script>
+</body>
+</html>
